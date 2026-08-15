@@ -529,7 +529,7 @@ def main(page: ft.Page):
                 dashboard_list.controls.append(
                     ft.Container(
                         content=ft.Row([
-                            ft.Icon(ft.Icons.FOLDER_LOCK, color=ft.Colors.CYAN_300),
+                            ft.Icon(ft.Icons.LOCK, color=ft.Colors.CYAN_300),
                             ft.Text(fname, expand=True, color=ft.Colors.WHITE),
                             ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED_400, on_click=lambda e, p=fpath: remove_dashboard_folder(p))
                         ]),
