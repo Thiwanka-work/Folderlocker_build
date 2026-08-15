@@ -1,4 +1,4 @@
-customtkinter
+flet
 cryptography
 pywin32
 Pillow
