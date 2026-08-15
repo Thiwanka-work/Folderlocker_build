@@ -1,11 +1,9 @@
 {
     "auto_lock": false,
-    "windows_hello": false,
-    "intruder_alert": false,
+    "windows_hello": true,
+    "intruder_alert": true,
     "decoy_password": "",
     "locked_folders": [
-        "C:/Users/ASUS/Desktop\\.test_locked",
-        "C:/Users/ASUS/Desktop\\.test2_locked",
         "C:/Users/ASUS/Desktop\\test"
     ]
 }

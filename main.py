@@ -119,6 +119,9 @@ def auto_lock_thread():
             for folder, pwd in folders_to_lock:
                 try:
                     locker.lock_folder(folder, pwd)
+                    parent_dir = os.path.dirname(folder)
+                    locked_path = os.path.join(parent_dir, "." + os.path.basename(folder) + "_locked")
+                    config.add_folder(locked_path)
                     del unlocked_folders[folder]
                 except Exception as e:
                     print(f"Auto-lock failed for {folder}: {e}")
@@ -194,6 +197,10 @@ def main(page: ft.Page):
         ],
         width=100,
         height=100,
+        rotate=ft.Rotate(angle=0, alignment=ft.Alignment(0, 0)),
+        animate_rotation=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
+        animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT),
+        animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
     )
     
     logo_container = ft.Container(
@@ -209,7 +216,9 @@ def main(page: ft.Page):
         ),
         border=border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.CYAN_300)),
         shadow=ft.BoxShadow(spread_radius=4, blur_radius=20, color=ft.Colors.with_opacity(0.35, ft.Colors.CYAN_900)),
-        margin=ft.Margin(left=0, top=25, right=0, bottom=15)
+        margin=ft.Margin(left=0, top=25, right=0, bottom=15),
+        animate_scale=ft.Animation(350, ft.AnimationCurve.ELASTIC_OUT),
+        animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
     )
     
     title_text = ft.Text("FolderDoor", size=32, weight=ft.FontWeight.W_900, color=ft.Colors.WHITE)
@@ -219,10 +228,13 @@ def main(page: ft.Page):
     folder_text = ft.Text("Select a Folder to Secure", color=ft.Colors.WHITE, size=16, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.W_600)
     folder_hint = ft.Text("Click card or button to browse", color=ft.Colors.WHITE54, size=12, text_align=ft.TextAlign.CENTER)
     
+    password_error_text = ft.Text("", color=ft.Colors.RED_300, size=12, visible=False)
+
     def on_pwd_change(e):
         update_activity()
-        if password_field.error_text:
-            password_field.error_text = None
+        if password_error_text.visible:
+            password_error_text.visible = False
+            password_error_text.value = ""
             page.update()
 
     password_field = ft.TextField(
@@ -233,7 +245,6 @@ def main(page: ft.Page):
         prefix_icon=ft.Icons.LOCK_OUTLINE,
         border_color=ft.Colors.with_opacity(0.5, ft.Colors.WHITE),
         focused_border_color=ft.Colors.CYAN_300,
-        error_style=ft.TextStyle(color=ft.Colors.RED_300, size=12),
         color=ft.Colors.WHITE,
         bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
         border_radius=12,
@@ -241,11 +252,38 @@ def main(page: ft.Page):
         on_submit=lambda e: perform_action()
     )
     
+    # Animated loading indicator using Flet's native ProgressRing (thread-safe)
+    loading_ring = ft.ProgressRing(
+        width=24,
+        height=24,
+        stroke_width=3,
+        color=ft.Colors.CYAN_300,
+    )
+    loading_text = ft.Text("Working...", color=ft.Colors.CYAN_200, size=13)
+    loading_row = ft.Row(
+        [loading_ring, loading_text],
+        alignment=ft.MainAxisAlignment.CENTER,
+        spacing=10,
+        visible=False,
+    )
+
+    def show_loading(message="Working..."):
+        loading_text.value = message
+        loading_row.visible = True
+        page.update()
+
+    def hide_loading():
+        loading_row.visible = False
+        try:
+            loading_row.update()
+        except Exception:
+            pass
+
+
     recovery_checkbox = ft.Checkbox(label="Use Recovery Key", visible=False, fill_color=ft.Colors.CYAN_500, on_change=update_activity)
-    progress_bar = ft.ProgressBar(width=320, value=0, visible=False, color=ft.Colors.CYAN_400, bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.WHITE))
     
     action_button = ft.ElevatedButton(
-        "Lock / Unlock",
+        "SELECT A FOLDER FIRST",
         disabled=True,
         width=320,
         height=55,
@@ -259,42 +297,100 @@ def main(page: ft.Page):
         )
     )
     
-    hello_button = ft.ElevatedButton(
-        "Unlock with Windows Hello",
-        icon=ft.Icons.FINGERPRINT,
+    def hello_hover(e):
+        if e.data == "true":
+            hello_button.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.CYAN_300)
+            hello_button.border = border_all(2, ft.Colors.with_opacity(0.6, ft.Colors.CYAN_300))
+            hello_button.shadow = ft.BoxShadow(spread_radius=6, blur_radius=25, color=ft.Colors.with_opacity(0.3, ft.Colors.CYAN_900))
+        else:
+            hello_button.bgcolor = ft.Colors.with_opacity(0.05, ft.Colors.CYAN_300)
+            hello_button.border = border_all(2, ft.Colors.with_opacity(0.3, ft.Colors.CYAN_300))
+            hello_button.shadow = ft.BoxShadow(spread_radius=4, blur_radius=20, color=ft.Colors.with_opacity(0.15, ft.Colors.CYAN_900))
+        try:
+            hello_button.update()
+        except:
+            pass
+
+    hello_button = ft.Container(
+        content=ft.Column(
+            [
+                ft.Icon(ft.Icons.FINGERPRINT, size=55, color=ft.Colors.CYAN_300),
+                ft.Text("Unlock with Fingerprint", size=11, color=ft.Colors.CYAN_200, weight=ft.FontWeight.W_500)
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=5
+        ),
         visible=False,
-        width=320,
-        height=45,
-        style=ft.ButtonStyle(
-            shape=ft.RoundedRectangleBorder(radius=12),
-            bgcolor=ft.Colors.BLUE_800,
-            color=ft.Colors.WHITE,
-        )
+        width=130,
+        height=130,
+        border_radius=65,
+        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.CYAN_300),
+        border=border_all(2, ft.Colors.with_opacity(0.3, ft.Colors.CYAN_300)),
+        shadow=ft.BoxShadow(spread_radius=4, blur_radius=20, color=ft.Colors.with_opacity(0.15, ft.Colors.CYAN_900)),
+        ink=True,
+        on_hover=hello_hover,
+        animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT)
     )
 
     def play_lock_animation(locked: bool):
-        status_icon.scale = 1.4
-        page.update()
-        time.sleep(0.3)
-        if locked:
-            status_icon.icon = ft.Icons.LOCK_ROUNDED
-            status_icon.color = ft.Colors.RED_400
-            status_badge.border = border_all(1.5, ft.Colors.RED_400)
-            logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.RED_400))
-        else:
-            status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
-            status_icon.color = ft.Colors.GREEN_400
-            status_badge.border = border_all(1.5, ft.Colors.GREEN_400)
-            logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.CYAN_300))
-        status_icon.scale = 1.0
-        page.update()
+        try:
+            if locked:
+                # Step 1: Shake + scale up (Flet animates rotation smoothly)
+                logo_container.scale = 1.12
+                logo_stack.rotate = ft.Rotate(angle=0.2, alignment=ft.Alignment(0, 0))
+                status_icon.icon = ft.Icons.LOCK_ROUNDED
+                status_icon.color = ft.Colors.RED_400
+                status_badge.border = border_all(1.5, ft.Colors.RED_400)
+                logo_container.border = border_all(2.5, ft.Colors.with_opacity(0.8, ft.Colors.RED_400))
+                logo_container.shadow = ft.BoxShadow(spread_radius=8, blur_radius=35, color=ft.Colors.with_opacity(0.5, ft.Colors.RED_900))
+                logo_container.gradient = ft.LinearGradient(
+                    begin=ft.Alignment(-1.0, -1.0),
+                    end=ft.Alignment(1.0, 1.0),
+                    colors=[ft.Colors.with_opacity(0.3, ft.Colors.RED_400), ft.Colors.with_opacity(0.05, ft.Colors.WHITE)],
+                )
+                page.update()
+                time.sleep(0.3)
+
+                # Step 2: Settle back — Flet ELASTIC_OUT curve bounces naturally
+                logo_container.scale = 1.0
+                logo_stack.rotate = ft.Rotate(angle=0, alignment=ft.Alignment(0, 0))
+                status_icon.scale = 1.0
+                page.update()
+
+            else:
+                # Step 1: Shrink + swap to green
+                logo_container.scale = 0.88
+                logo_container.opacity = 0.7
+                status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
+                status_icon.color = ft.Colors.GREEN_400
+                status_badge.border = border_all(1.5, ft.Colors.GREEN_400)
+                logo_container.border = border_all(2.5, ft.Colors.with_opacity(0.8, ft.Colors.GREEN_400))
+                logo_container.shadow = ft.BoxShadow(spread_radius=10, blur_radius=40, color=ft.Colors.with_opacity(0.55, ft.Colors.GREEN_900))
+                logo_container.gradient = ft.LinearGradient(
+                    begin=ft.Alignment(-1.0, -1.0),
+                    end=ft.Alignment(1.0, 1.0),
+                    colors=[ft.Colors.with_opacity(0.3, ft.Colors.GREEN_400), ft.Colors.with_opacity(0.05, ft.Colors.WHITE)],
+                )
+                page.update()
+                time.sleep(0.2)
+
+                # Step 2: Elastic bounce back — animate_scale ELASTIC_OUT handles the bounce
+                logo_container.scale = 1.0
+                logo_container.opacity = 1.0
+                status_icon.scale = 1.0
+                page.update()
+
+        except Exception:
+            pass  # Never crash the UI due to animation failure
+
+
 
     def update_ui_state():
         nonlocal is_locked
         update_activity()
         
         if selected_folder:
-            config.add_folder(selected_folder)
             folder_name = os.path.basename(selected_folder)
             if len(folder_name) > 25: 
                 folder_name = "..." + folder_name[-25:]
@@ -303,21 +399,17 @@ def main(page: ft.Page):
             folder_text.color = ft.Colors.CYAN_200
             folder_hint.value = "Click to change folder"
             folder_icon_large.icon = ft.Icons.FOLDER_SPECIAL_ROUNDED
-            select_btn.text = "Change Folder"
+            select_btn.content = "Change Folder"
             
             is_locked = locker.is_locked(selected_folder)
             
             if is_locked:
+                # Only add locked folders to dashboard/config
+                config.add_folder(selected_folder)
                 status_icon.icon = ft.Icons.LOCK_ROUNDED
                 status_icon.color = ft.Colors.RED_400
                 status_badge.border = border_all(1.5, ft.Colors.RED_400)
                 logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.RED_400))
-                action_button.text = "UNLOCK FOLDER"
-                action_button.icon = ft.Icons.LOCK_OPEN_ROUNDED
-                action_button.style.bgcolor = ft.Colors.GREEN_600
-                action_button.style.shadow_color = ft.Colors.GREEN_900
-                recovery_checkbox.visible = True
-                password_field.label = "Password or Recovery Key"
                 
                 # Check if Windows hello is enabled for this folder
                 hello_pwd = None
@@ -325,13 +417,25 @@ def main(page: ft.Page):
                     hello_pwd = keyring.get_password("FolderDoor", selected_folder)
                 except:
                     pass
+                
+                # Show Fingerprint option if available
                 hello_button.visible = bool(hello_pwd)
+                
+                # ALWAYS show password option
+                password_field.visible = True
+                action_button.visible = True
+                recovery_checkbox.visible = True
+                action_button.content = "UNLOCK FOLDER"
+                action_button.icon = ft.Icons.LOCK_OPEN_ROUNDED
+                action_button.style.bgcolor = ft.Colors.GREEN_600
+                action_button.style.shadow_color = ft.Colors.GREEN_900
+                password_field.label = "Password or Recovery Key"
             else:
                 status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
                 status_icon.color = ft.Colors.GREEN_400
                 status_badge.border = border_all(1.5, ft.Colors.CYAN_300)
                 logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.CYAN_300))
-                action_button.text = "LOCK FOLDER"
+                action_button.content = "LOCK FOLDER"
                 action_button.icon = ft.Icons.LOCK_ROUNDED
                 action_button.style.bgcolor = ft.Colors.RED_600
                 action_button.style.shadow_color = ft.Colors.RED_900
@@ -339,6 +443,8 @@ def main(page: ft.Page):
                 recovery_checkbox.value = False
                 password_field.label = "Set Password"
                 hello_button.visible = False
+                password_field.visible = True
+                action_button.visible = True
                 
             action_button.disabled = False
         else:
@@ -347,15 +453,28 @@ def main(page: ft.Page):
             folder_text.color = ft.Colors.WHITE
             folder_hint.value = "Click card or button to browse"
             folder_icon_large.icon = ft.Icons.FOLDER_OPEN_ROUNDED
-            select_btn.text = "Browse Folder"
+            select_btn.content = "Browse Folder"
+            action_button.content = "SELECT A FOLDER FIRST"
+            action_button.icon = ft.Icons.FOLDER_OPEN_ROUNDED
+            action_button.style.bgcolor = ft.Colors.BLUE_GREY_700
+            action_button.style.shadow_color = ft.Colors.BLUE_GREY_900
             action_button.disabled = True
             recovery_checkbox.visible = False
             hello_button.visible = False
+            password_field.visible = True
+            action_button.visible = True
             status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
             status_icon.color = ft.Colors.WHITE54
             status_badge.border = border_all(1.5, ft.Colors.WHITE24)
             logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.3, ft.Colors.WHITE24))
             
+        try:
+            action_button.update()
+            password_field.update()
+            recovery_checkbox.update()
+            hello_button.update()
+        except Exception:
+            pass
         page.update()
 
     def pick_folder_result():
@@ -440,22 +559,35 @@ def main(page: ft.Page):
             
         pwd = bypass_pwd if bypass_pwd else password_field.value
         if not pwd:
-            password_field.error_text = "Password is required"
+            password_error_text.value = "Password is required"
+            password_error_text.visible = True
             page.update()
             return
             
-        password_field.error_text = None
+        password_error_text.visible = False
+        password_error_text.value = ""
         action_button.disabled = True
-        progress_bar.visible = True
-        progress_bar.value = None
+        show_loading("Processing...")
         page.update()
         
         def run_task():
+            start_time = time.time()
             nonlocal selected_folder, failed_attempts
+            
+            last_update = 0
             def progress_cb(current, total):
+                nonlocal last_update
                 if total > 0:
-                    progress_bar.value = current / total
-                    page.update()
+                    now = time.time()
+                    # Throttle updates to max 10 per second to prevent Flet WS crash
+                    if now - last_update > 0.1 or current == total:
+                        pct = int((current / total) * 100)
+                        loading_text.value = f"Processing... {pct}%"
+                        try:
+                            loading_text.update()
+                        except Exception:
+                            pass
+                        last_update = now
                     
             try:
                 if is_locked:
@@ -465,6 +597,18 @@ def main(page: ft.Page):
                         is_recovery=recovery_checkbox.value,
                         progress_callback=progress_cb
                     )
+                    config.remove_folder(selected_folder)
+                    
+                    try:
+                        keyring.delete_password("FolderDoor", selected_folder)
+                    except:
+                        pass
+                        
+                    elapsed = time.time() - start_time
+                    if elapsed < 1.5:
+                        time.sleep(1.5 - elapsed)
+                        
+                    hide_loading()  # Hide before animation
                     play_lock_animation(locked=False)
                     failed_attempts = 0
                     unlocked_folders[unlocked_path] = pwd
@@ -475,17 +619,25 @@ def main(page: ft.Page):
                         return
                     else:
                         password_field.value = ""
-                        password_field.error_text = None
+                        password_error_text.visible = False
+                        password_error_text.value = ""
                         selected_folder = unlocked_path
-                        show_snack("Folder unlocked successfully!", ft.Colors.GREEN_600)
                         update_ui_state()
                         update_dashboard()
+                        show_snack("Folder unlocked successfully!", ft.Colors.GREEN_600)
+                        page.update()
                 else:
                     rec_key = locker.lock_folder(
                         selected_folder,
                         pwd,
                         progress_callback=progress_cb
                     )
+                    
+                    elapsed = time.time() - start_time
+                    if elapsed < 1.5:
+                        time.sleep(1.5 - elapsed)
+                        
+                    hide_loading()  # Hide before animation
                     play_lock_animation(locked=True)
                     
                     if selected_folder in unlocked_folders:
@@ -503,16 +655,28 @@ def main(page: ft.Page):
                     config.remove_folder(selected_folder)
                     config.add_folder(locked_path)
                     
+                    # Save to keyring for Windows Hello if enabled
+                    settings = config.load_settings()
+                    if settings.get("windows_hello", False):
+                        try:
+                            keyring.set_password("FolderDoor", locked_path, pwd)
+                        except:
+                            pass
+                    
                     selected_folder = locked_path
                     password_field.value = ""
-                    password_field.error_text = None
+                    password_error_text.visible = False
+                    password_error_text.value = ""
                     update_ui_state()
                     update_dashboard()
+                    page.update()
                     
             except ValueError as ve:
                 failed_attempts += 1
                 err_msg = str(ve)
-                password_field.error_text = "Incorrect password or recovery key!"
+                password_error_text.value = "Incorrect password or recovery key!"
+                password_error_text.visible = True
+                password_error_text.update()
                 show_snack(err_msg, ft.Colors.RED_600)
                 
                 settings = config.load_settings()
@@ -521,11 +685,14 @@ def main(page: ft.Page):
                     show_snack(f"Intruder alert! Photo captured ({failed_attempts} attempts)", ft.Colors.ORANGE_700)
             except Exception as ex:
                 err_msg = str(ex)
-                password_field.error_text = err_msg
+                password_error_text.value = err_msg
+                password_error_text.visible = True
+                password_error_text.update()
                 show_snack(err_msg, ft.Colors.RED_600)
             finally:
-                progress_bar.visible = False
+                hide_loading()
                 action_button.disabled = False
+                action_button.update()
                 page.update()
                 
         threading.Thread(target=run_task, daemon=True).start()
@@ -556,9 +723,10 @@ def main(page: ft.Page):
             folder_card,
             ft.Container(height=15),
             password_field,
+            password_error_text,
             recovery_checkbox,
             ft.Container(height=5),
-            progress_bar,
+            loading_row,
             action_button,
             hello_button
         ],
@@ -598,23 +766,60 @@ def main(page: ft.Page):
         folders = settings.get("locked_folders", [])
         if not folders:
             dashboard_list.controls.append(
-                ft.Text("No folders found. Add a folder from the Home screen.", color=ft.Colors.WHITE54, text_align=ft.TextAlign.CENTER)
+                ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.FOLDER_OFF_ROUNDED, size=48, color=ft.Colors.WHITE24),
+                        ft.Text("No locked folders", color=ft.Colors.WHITE54, size=16, weight=ft.FontWeight.W_600, text_align=ft.TextAlign.CENTER),
+                        ft.Text("Lock a folder from the Home screen.", color=ft.Colors.WHITE38, size=12, text_align=ft.TextAlign.CENTER),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                    alignment=ft.Alignment(0, 0),
+                    expand=True,
+                    padding=ft.Padding(left=0, top=60, right=0, bottom=0),
+                )
             )
         else:
             for fpath in folders:
                 fname = os.path.basename(fpath)
+                # Determine if folder is still locked
+                folder_is_locked = locker.is_locked(fpath)
+                lock_icon = ft.Icons.LOCK_ROUNDED if folder_is_locked else ft.Icons.LOCK_OPEN_ROUNDED
+                lock_color = ft.Colors.RED_400 if folder_is_locked else ft.Colors.GREEN_400
+                status_label = "Locked" if folder_is_locked else "Unlocked"
+                status_label_color = ft.Colors.RED_300 if folder_is_locked else ft.Colors.GREEN_300
                 dashboard_list.controls.append(
                     ft.Container(
                         content=ft.Row([
-                            ft.Icon(ft.Icons.LOCK, color=ft.Colors.CYAN_300),
-                            ft.Text(fname, expand=True, color=ft.Colors.WHITE),
-                            ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED_400, on_click=lambda e, p=fpath: remove_dashboard_folder(p))
-                        ]),
-                        padding=15,
-                        border_radius=10,
-                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
+                            ft.Container(
+                                content=ft.Icon(lock_icon, color=lock_color, size=22),
+                                width=40, height=40,
+                                border_radius=20,
+                                bgcolor=ft.Colors.with_opacity(0.1, lock_color),
+                                alignment=ft.Alignment(0, 0)
+                            ),
+                            ft.Column([
+                                ft.Text(fname, color=ft.Colors.WHITE, weight=ft.FontWeight.W_600, size=14, 
+                                        max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                ft.Text(status_label, color=status_label_color, size=11)
+                            ], expand=True, spacing=2),
+                            ft.IconButton(
+                                ft.Icons.OPEN_IN_NEW_ROUNDED, 
+                                icon_color=ft.Colors.CYAN_300, 
+                                tooltip="Select this folder",
+                                on_click=lambda e, p=fpath: select_dashboard_folder(p)
+                            ),
+                            ft.IconButton(
+                                ft.Icons.DELETE_OUTLINE_ROUNDED, 
+                                icon_color=ft.Colors.RED_400, 
+                                tooltip="Remove from list",
+                                on_click=lambda e, p=fpath: remove_dashboard_folder(p)
+                            )
+                        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        padding=ft.Padding(left=15, top=12, right=15, bottom=12),
+                        border_radius=12,
+                        bgcolor=ft.Colors.with_opacity(0.07, ft.Colors.WHITE),
+                        border=border_all(1, ft.Colors.with_opacity(0.12, ft.Colors.WHITE)),
+                        ink=True,
                         on_click=lambda e, p=fpath: select_dashboard_folder(p),
-                        ink=True
                     )
                 )
         page.update()
@@ -631,6 +836,21 @@ def main(page: ft.Page):
         settings["decoy_password"] = e.control.value
         config.save_settings(settings)
         update_activity()
+
+    def open_intruders_folder(e):
+        if os.path.exists("Intruders"):
+            os.startfile(os.path.abspath("Intruders"))
+
+    open_intruders_btn = ft.ElevatedButton(
+        "View Captured Intruders",
+        icon=ft.Icons.PHOTO_LIBRARY_ROUNDED,
+        on_click=open_intruders_folder,
+        disabled=True,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.RED_400),
+            color=ft.Colors.RED_200,
+        )
+    )
 
     settings = config.load_settings()
     auto_lock_switch = ft.Switch(label="Auto-Lock (10 mins idle)", value=settings.get("auto_lock", False), active_color=ft.Colors.CYAN_400, on_change=lambda e: toggle_setting(e, "auto_lock"))
@@ -653,6 +873,7 @@ def main(page: ft.Page):
                     ft.Divider(color=ft.Colors.WHITE24),
                     intruder_switch,
                     ft.Text("Takes a silent photo using the webcam after 3 failed password attempts.", color=ft.Colors.WHITE54, size=12),
+                    open_intruders_btn,
                     ft.Divider(color=ft.Colors.WHITE24),
                     decoy_input,
                     ft.Text("Enter a fake password. If forced to unlock, typing this will open a fake, empty folder.", color=ft.Colors.WHITE54, size=12),
@@ -676,6 +897,11 @@ def main(page: ft.Page):
         settings_view.visible = (index == 2)
         if index == 1:
             update_dashboard()
+        if index == 2:
+            has_images = False
+            if os.path.exists("Intruders"):
+                has_images = any(f.endswith('.jpg') for f in os.listdir("Intruders"))
+            open_intruders_btn.disabled = not has_images
         page.update()
 
     page.navigation_bar = ft.NavigationBar(

@@ -34,12 +34,12 @@ def _refresh_explorer():
     if os.name == 'nt':
         ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
 
-def _get_key(password: str, salt: bytes) -> bytes:
+def _get_key(password: str, salt: bytes, iterations: int = 100000) -> bytes:
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        iterations=480000,
+        iterations=iterations,
     )
     return base64.urlsafe_b64encode(kdf.derive(password.encode()))
 
@@ -48,12 +48,13 @@ def _create_shortcut(target_path, link_path, arguments="", icon_location=None):
     shortcut = shell.CreateShortCut(link_path)
     shortcut.TargetPath = target_path
     shortcut.Arguments = arguments
-    if icon_location is None:
-        icon_location = get_icon_path()
-    if os.path.exists(icon_location):
+    
+    if icon_location:
         shortcut.IconLocation = icon_location
     else:
+        # Use standard Windows folder icon by default instead of app icon
         shortcut.IconLocation = r"%SystemRoot%\System32\shell32.dll,3"
+        
     shortcut.WorkingDirectory = os.path.dirname(target_path)
     shortcut.Save()
 
@@ -80,14 +81,15 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
         raise ValueError("Hidden locked folder already exists. Unlock it first.")
     
     salt = os.urandom(16)
+    iterations = 100000
     master_key = Fernet.generate_key()
     fernet_master = Fernet(master_key)
     
-    user_key = _get_key(password, salt)
+    user_key = _get_key(password, salt, iterations)
     fernet_user = Fernet(user_key)
     
     recovery_key = _generate_recovery_key()
-    recovery_derived_key = _get_key(recovery_key, salt)
+    recovery_derived_key = _get_key(recovery_key, salt, iterations)
     fernet_recovery = Fernet(recovery_derived_key)
     
     # Encrypt all files
@@ -133,6 +135,7 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
     
     metadata = {
         "salt": base64.b64encode(salt).decode('utf-8'),
+        "iterations": iterations,
         "master_key_user": fernet_user.encrypt(master_key).decode('utf-8'),
         "master_key_recovery": fernet_recovery.encrypt(master_key).decode('utf-8'),
         "verification": fernet_master.encrypt(b"VERIFIED").decode('utf-8')
@@ -183,8 +186,9 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
         metadata = json.load(f)
     
     salt = base64.b64decode(metadata["salt"])
+    iterations = metadata.get("iterations", 480000)
     
-    derived_key = _get_key(password_or_recovery, salt)
+    derived_key = _get_key(password_or_recovery, salt, iterations)
     fernet_outer = Fernet(derived_key)
     
     try:
