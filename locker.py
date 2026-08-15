@@ -5,7 +5,9 @@ import json
 import win32com.client
 import ctypes
 import random
-import string
+import hashlib
+import config
+import keyring
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -77,10 +79,6 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
     recovery_derived_key = _get_key(recovery_key, salt)
     fernet_recovery = Fernet(recovery_derived_key)
     
-    # Encrypt the master key twice
-    encrypted_master_key_user = fernet_user.encrypt(master_key)
-    encrypted_master_key_recovery = fernet_recovery.encrypt(master_key)
-    
     # Encrypt all files
     files_to_encrypt = []
     for root, dirs, files in os.walk(folder_path):
@@ -120,13 +118,23 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
         progress_callback(total_files, total_files)
 
     # Save metadata
-    verification_token = fernet_master.encrypt(b"VERIFIED")
+    settings = config.load_settings()
+    
     metadata = {
         "salt": base64.b64encode(salt).decode('utf-8'),
-        "verification": verification_token.decode('utf-8'),
-        "master_key_user": encrypted_master_key_user.decode('utf-8'),
-        "master_key_recovery": encrypted_master_key_recovery.decode('utf-8')
+        "master_key_user": fernet_user.encrypt(master_key).decode('utf-8'),
+        "master_key_recovery": fernet_recovery.encrypt(master_key).decode('utf-8'),
+        "verification": fernet_master.encrypt(b"VERIFIED").decode('utf-8')
     }
+    
+    if settings.get("decoy_password"):
+        metadata["decoy_hash"] = hashlib.sha256(settings["decoy_password"].encode('utf-8')).hexdigest()
+        
+    if settings.get("windows_hello"):
+        try:
+            keyring.set_password("FolderDoor", folder_path, password)
+        except Exception as e:
+            print(f"Keyring error: {e}")
     with open(metadata_path, "w") as f:
         json.dump(metadata, f)
         
@@ -176,6 +184,16 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
             
         master_key = fernet_outer.decrypt(encrypted_master)
     except Exception:
+        # Check if decoy password was entered
+        decoy_hash = metadata.get("decoy_hash")
+        if decoy_hash and hashlib.sha256(password_or_recovery.encode('utf-8')).hexdigest() == decoy_hash:
+            original_name = os.path.basename(hidden_folder_path)
+            if original_name.startswith(".") and original_name.endswith("_locked"):
+                original_name = original_name[1:-7]
+            parent_dir = os.path.dirname(hidden_folder_path)
+            decoy_path = os.path.join(parent_dir, original_name)
+            os.makedirs(decoy_path, exist_ok=True)
+            return decoy_path
         raise ValueError("Invalid password or recovery key!")
         
     fernet_master = Fernet(master_key)
@@ -245,6 +263,13 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
     shortcut_path = os.path.join(parent_dir, f"{original_name}.lnk")
     if os.path.exists(shortcut_path):
         os.remove(shortcut_path)
+            
+    # Cleanup keyring if windows hello was used
+    try:
+        if keyring.get_password("FolderDoor", original_folder_path):
+            keyring.delete_password("FolderDoor", original_folder_path)
+    except Exception:
+        pass
         
     _refresh_explorer()
     return original_folder_path
