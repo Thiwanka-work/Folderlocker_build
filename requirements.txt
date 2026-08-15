@@ -2,3 +2,5 @@ flet
 cryptography
 pywin32
 Pillow
+keyring
+opencv-python

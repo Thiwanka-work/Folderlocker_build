@@ -8,7 +8,6 @@ import threading
 import time
 import config
 import keyring
-import flet_dropzone as ftd
 
 # Setup Intruders dir
 if not os.path.exists("Intruders"):
@@ -213,8 +212,9 @@ def main(page: ft.Page):
     title_text = ft.Text("FolderDoor", size=32, weight=ft.FontWeight.W_900, color=ft.Colors.WHITE)
     subtitle_text = ft.Text("Secure your private files", size=14, color=ft.Colors.WHITE70, italic=True)
     
-    folder_icon_large = ft.Icon(ft.Icons.CLOUD_UPLOAD_ROUNDED, size=40, color=ft.Colors.CYAN_300)
-    folder_text = ft.Text("Drag & Drop Folder Here", color=ft.Colors.WHITE70, size=16, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.W_500)
+    folder_icon_large = ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=40, color=ft.Colors.CYAN_300)
+    folder_text = ft.Text("Select a Folder to Secure", color=ft.Colors.WHITE, size=16, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.W_600)
+    folder_hint = ft.Text("Click card or button to browse", color=ft.Colors.WHITE54, size=12, text_align=ft.TextAlign.CENTER)
     
     password_field = ft.TextField(
         label="Enter Password", 
@@ -288,9 +288,11 @@ def main(page: ft.Page):
             if len(folder_name) > 25: 
                 folder_name = "..." + folder_name[-25:]
             folder_text.value = folder_name
-            folder_text.size = 20
-            folder_text.color = ft.Colors.CYAN_100
+            folder_text.size = 18
+            folder_text.color = ft.Colors.CYAN_200
+            folder_hint.value = "Click to change folder"
             folder_icon_large.icon = ft.Icons.FOLDER_SPECIAL_ROUNDED
+            select_btn.text = "Change Folder"
             
             is_locked = locker.is_locked(selected_folder)
             
@@ -329,10 +331,12 @@ def main(page: ft.Page):
                 
             action_button.disabled = False
         else:
-            folder_text.value = "Drag & Drop Folder Here"
+            folder_text.value = "Select a Folder to Secure"
             folder_text.size = 16
-            folder_text.color = ft.Colors.WHITE70
-            folder_icon_large.icon = ft.Icons.CLOUD_UPLOAD_ROUNDED
+            folder_text.color = ft.Colors.WHITE
+            folder_hint.value = "Click card or button to browse"
+            folder_icon_large.icon = ft.Icons.FOLDER_OPEN_ROUNDED
+            select_btn.text = "Browse Folder"
             action_button.disabled = True
             recovery_checkbox.visible = False
             hello_button.visible = False
@@ -355,50 +359,38 @@ def main(page: ft.Page):
             switch_tab(0)
 
     select_btn = ft.ElevatedButton(
-        "Choose Folder", 
+        "Browse Folder", 
         icon=ft.Icons.FOLDER_OPEN_ROUNDED, 
         on_click=lambda e: pick_folder_result(),
         visible=not direct_folder,
-        width=200,
-        height=45,
+        width=180,
+        height=40,
         style=ft.ButtonStyle(
-            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
-            color=ft.Colors.WHITE,
+            bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.CYAN_400),
+            color=ft.Colors.CYAN_100,
             shape=ft.RoundedRectangleBorder(radius=8),
             elevation=0
         )
     )
-    
-    def on_dropped(e):
-        if e.files:
-            file_path = e.files[0].path
-            if os.path.isfile(file_path):
-                file_path = os.path.dirname(file_path)
-            nonlocal selected_folder
-            selected_folder = file_path
-            update_ui_state()
-            switch_tab(0)
 
-    dropzone_content = ft.Container(
+    folder_card = ft.Container(
         content=ft.Column(
             [
                 folder_icon_large,
                 folder_text,
+                folder_hint,
                 select_btn,
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=10
+            spacing=8
         ),
-        padding=25,
+        padding=20,
         width=350,
         border_radius=16,
-        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.CYAN_300),
-        border=border_all(2, ft.Colors.with_opacity(0.3, ft.Colors.CYAN_300))
-    )
-    
-    dropzone = ftd.Dropzone(
-        content=dropzone_content,
-        on_dropped=on_dropped
+        bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.CYAN_400),
+        border=border_all(1.5, ft.Colors.with_opacity(0.35, ft.Colors.CYAN_400)),
+        on_click=lambda e: pick_folder_result() if not direct_folder else None,
+        ink=True,
     )
     
     def show_snack(message, color=ft.Colors.RED_500):
@@ -552,7 +544,7 @@ def main(page: ft.Page):
             title_text,
             subtitle_text,
             ft.Container(height=15),
-            dropzone,
+            folder_card,
             ft.Container(height=15),
             password_field,
             recovery_checkbox,
