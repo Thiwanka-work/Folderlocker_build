@@ -4,6 +4,8 @@
     "intruder_alert": false,
     "decoy_password": "",
     "locked_folders": [
-        "C:/Users/ASUS/Desktop/test"
+        "C:/Users/ASUS/Desktop\\.test_locked",
+        "C:/Users/ASUS/Desktop\\.test2_locked",
+        "C:/Users/ASUS/Desktop\\test"
     ]
 }

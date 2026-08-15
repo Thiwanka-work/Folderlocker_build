@@ -38,14 +38,17 @@ def trigger_intruder_alert():
     def capture():
         try:
             import cv2
-            cap = cv2.VideoCapture(0)
-            ret, frame = cap.read()
-            if ret:
-                filename = f"Intruders/intruder_{int(time.time())}.jpg"
-                cv2.imwrite(filename, frame)
-            cap.release()
+            cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) if os.name == 'nt' else cv2.VideoCapture(0)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    if not os.path.exists("Intruders"):
+                        os.makedirs("Intruders", exist_ok=True)
+                    filename = f"Intruders/intruder_{int(time.time())}.jpg"
+                    cv2.imwrite(filename, frame)
+                cap.release()
         except Exception as e:
-            print("Intruder capture failed:", e)
+            print("Intruder capture error:", e)
     threading.Thread(target=capture, daemon=True).start()
 
 def windows_hello_auth():
@@ -216,6 +219,12 @@ def main(page: ft.Page):
     folder_text = ft.Text("Select a Folder to Secure", color=ft.Colors.WHITE, size=16, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.W_600)
     folder_hint = ft.Text("Click card or button to browse", color=ft.Colors.WHITE54, size=12, text_align=ft.TextAlign.CENTER)
     
+    def on_pwd_change(e):
+        update_activity()
+        if password_field.error_text:
+            password_field.error_text = None
+            page.update()
+
     password_field = ft.TextField(
         label="Enter Password", 
         password=True, 
@@ -224,10 +233,12 @@ def main(page: ft.Page):
         prefix_icon=ft.Icons.LOCK_OUTLINE,
         border_color=ft.Colors.with_opacity(0.5, ft.Colors.WHITE),
         focused_border_color=ft.Colors.CYAN_300,
+        error_style=ft.TextStyle(color=ft.Colors.RED_300, size=12),
         color=ft.Colors.WHITE,
         bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
         border_radius=12,
-        on_change=update_activity
+        on_change=on_pwd_change,
+        on_submit=lambda e: perform_action()
     )
     
     recovery_checkbox = ft.Checkbox(label="Use Recovery Key", visible=False, fill_color=ft.Colors.CYAN_500, on_change=update_activity)
@@ -424,20 +435,19 @@ def main(page: ft.Page):
         update_activity()
         
         if not selected_folder:
+            show_snack("Please select a folder first!")
             return
             
         pwd = bypass_pwd if bypass_pwd else password_field.value
         if not pwd:
-            show_snack("Please enter a password!")
+            password_field.error_text = "Password is required"
+            page.update()
             return
             
+        password_field.error_text = None
         action_button.disabled = True
-        password_field.disabled = True
-        select_btn.disabled = True
-        recovery_checkbox.disabled = True
-        hello_button.disabled = True
         progress_bar.visible = True
-        progress_bar.value = 0
+        progress_bar.value = None
         page.update()
         
         def run_task():
@@ -456,18 +466,18 @@ def main(page: ft.Page):
                         progress_callback=progress_cb
                     )
                     play_lock_animation(locked=False)
-                    time.sleep(0.5)
                     failed_attempts = 0
-                    
                     unlocked_folders[unlocked_path] = pwd
                     
                     if direct_folder:
                         os.startfile(unlocked_path)
                         page.window.close()
+                        return
                     else:
-                        show_snack("Folder unlocked successfully!", ft.Colors.GREEN_600)
-                        selected_folder = unlocked_path
                         password_field.value = ""
+                        password_field.error_text = None
+                        selected_folder = unlocked_path
+                        show_snack("Folder unlocked successfully!", ft.Colors.GREEN_600)
                         update_ui_state()
                         update_dashboard()
                 else:
@@ -477,17 +487,16 @@ def main(page: ft.Page):
                         progress_callback=progress_cb
                     )
                     play_lock_animation(locked=True)
-                    time.sleep(0.5)
                     
                     if selected_folder in unlocked_folders:
                         del unlocked_folders[selected_folder]
                     
                     msg = (
                         "Folder locked successfully!\n\n"
-                        "IMPORTANT: Save this Recovery Key in a safe place.\n\n"
+                        "IMPORTANT: Save this Recovery Key in a safe place:\n\n"
                         f"{rec_key}"
                     )
-                    show_dialog("Success!", msg)
+                    show_dialog("Folder Locked Successfully", msg)
                     
                     parent_dir = os.path.dirname(selected_folder)
                     locked_path = os.path.join(parent_dir, "." + os.path.basename(selected_folder) + "_locked")
@@ -496,25 +505,25 @@ def main(page: ft.Page):
                     
                     selected_folder = locked_path
                     password_field.value = ""
+                    password_field.error_text = None
                     update_ui_state()
                     update_dashboard()
                     
             except ValueError as ve:
                 failed_attempts += 1
-                show_snack(str(ve))
+                err_msg = str(ve)
+                password_field.error_text = "Incorrect password or recovery key!"
+                show_snack(err_msg, ft.Colors.RED_600)
+                
                 settings = config.load_settings()
                 if settings.get("intruder_alert") and failed_attempts >= 3:
                     trigger_intruder_alert()
-                    show_snack("Intruder alert triggered!", ft.Colors.ORANGE_500)
-                update_ui_state()
+                    show_snack(f"Intruder alert! Photo captured ({failed_attempts} attempts)", ft.Colors.ORANGE_700)
             except Exception as ex:
-                show_snack(str(ex))
-                update_ui_state()
+                err_msg = str(ex)
+                password_field.error_text = err_msg
+                show_snack(err_msg, ft.Colors.RED_600)
             finally:
-                password_field.disabled = False
-                select_btn.disabled = False
-                recovery_checkbox.disabled = False
-                hello_button.disabled = False
                 progress_bar.visible = False
                 action_button.disabled = False
                 page.update()
