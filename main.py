@@ -8,6 +8,7 @@ import threading
 import time
 import config
 import keyring
+import flet_dropzone as ftd
 
 # Setup Intruders dir
 if not os.path.exists("Intruders"):
@@ -168,7 +169,9 @@ def main(page: ft.Page):
     
     title_text = ft.Text("FolderDoor", size=32, weight=ft.FontWeight.W_900, color=ft.Colors.WHITE)
     subtitle_text = ft.Text("Secure your private files", size=14, color=ft.Colors.WHITE70, italic=True)
-    folder_text = ft.Text("No folder selected", color=ft.Colors.WHITE70, size=14, text_align=ft.TextAlign.CENTER)
+    
+    folder_icon_large = ft.Icon(ft.Icons.CLOUD_UPLOAD_ROUNDED, size=40, color=ft.Colors.CYAN_300)
+    folder_text = ft.Text("Drag & Drop Folder Here", color=ft.Colors.WHITE70, size=16, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.W_500)
     
     password_field = ft.TextField(
         label="Enter Password", 
@@ -237,9 +240,12 @@ def main(page: ft.Page):
         if selected_folder:
             config.add_folder(selected_folder)
             folder_name = os.path.basename(selected_folder)
-            if len(folder_name) > 30: 
-                folder_name = "..." + folder_name[-30:]
-            folder_text.value = f"Selected:\n{folder_name}"
+            if len(folder_name) > 25: 
+                folder_name = "..." + folder_name[-25:]
+            folder_text.value = folder_name
+            folder_text.size = 20
+            folder_text.color = ft.Colors.CYAN_100
+            folder_icon_large.icon = ft.Icons.FOLDER_SPECIAL_ROUNDED
             
             is_locked = locker.is_locked(selected_folder)
             
@@ -274,7 +280,10 @@ def main(page: ft.Page):
                 
             action_button.disabled = False
         else:
-            folder_text.value = "No folder selected"
+            folder_text.value = "Drag & Drop Folder Here"
+            folder_text.size = 16
+            folder_text.color = ft.Colors.WHITE70
+            folder_icon_large.icon = ft.Icons.CLOUD_UPLOAD_ROUNDED
             action_button.disabled = True
             recovery_checkbox.visible = False
             hello_button.visible = False
@@ -296,17 +305,49 @@ def main(page: ft.Page):
 
     select_btn = ft.ElevatedButton(
         "Choose Folder", 
-        icon=ft.Icons.FOLDER_SPECIAL_ROUNDED, 
+        icon=ft.Icons.FOLDER_OPEN_ROUNDED, 
         on_click=lambda e: pick_folder_result(),
         visible=not direct_folder,
         width=200,
         height=45,
         style=ft.ButtonStyle(
-            bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.WHITE),
+            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
             color=ft.Colors.WHITE,
             shape=ft.RoundedRectangleBorder(radius=8),
             elevation=0
         )
+    )
+    
+    def on_dropped(e):
+        if e.files:
+            file_path = e.files[0].path
+            if os.path.isfile(file_path):
+                file_path = os.path.dirname(file_path)
+            nonlocal selected_folder
+            selected_folder = file_path
+            update_ui_state()
+            switch_tab(0)
+
+    dropzone_content = ft.Container(
+        content=ft.Column(
+            [
+                folder_icon_large,
+                folder_text,
+                select_btn,
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=10
+        ),
+        padding=25,
+        width=350,
+        border_radius=16,
+        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.CYAN_300),
+        border=border_all(2, ft.Colors.with_opacity(0.3, ft.Colors.CYAN_300))
+    )
+    
+    dropzone = ftd.Dropzone(
+        content=dropzone_content,
+        on_dropped=on_dropped
     )
     
     def show_snack(message, color=ft.Colors.RED_500):
@@ -460,23 +501,7 @@ def main(page: ft.Page):
             title_text,
             subtitle_text,
             ft.Container(height=15),
-            ft.Container(
-                content=ft.Column(
-                    [
-                        select_btn,
-                        folder_text,
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=15
-                ),
-                padding=25,
-                width=350,
-                border_radius=16,
-                gradient=ft.LinearGradient(
-                    colors=[ft.Colors.with_opacity(0.1, ft.Colors.WHITE), ft.Colors.with_opacity(0.02, ft.Colors.WHITE)]
-                ),
-                border=border_all(1, ft.Colors.with_opacity(0.1, ft.Colors.WHITE)),
-            ),
+            dropzone,
             ft.Container(height=15),
             password_field,
             recovery_checkbox,
