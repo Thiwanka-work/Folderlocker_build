@@ -16,9 +16,19 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 def get_icon_path():
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
-    else:
-        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Folderlocker")
-    return os.path.join(base_path, "Folderlocker.ico")
+        return os.path.join(base_path, "Folderlocker.ico")
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(current_dir, "Folderlocker.ico"),
+        os.path.join(current_dir, "Folderlocker", "Folderlocker.ico"),
+        os.path.join(current_dir, "Folderlocker.png"),
+        os.path.join(current_dir, "Folderlocker", "Folderlocker.png")
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return os.path.join(current_dir, "Folderlocker.ico")
 
 def _refresh_explorer():
     if os.name == 'nt':

@@ -1,0 +1,9 @@
+{
+    "auto_lock": false,
+    "windows_hello": false,
+    "intruder_alert": false,
+    "decoy_password": "",
+    "locked_folders": [
+        "C:/Users/ASUS/Desktop/test"
+    ]
+}

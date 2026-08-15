@@ -21,9 +21,19 @@ def border_all(width, color):
 def get_icon_path():
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
-    else:
-        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Folderlocker")
-    return os.path.join(base_path, "Folderlocker.ico")
+        return os.path.join(base_path, "Folderlocker.ico")
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(current_dir, "Folderlocker.ico"),
+        os.path.join(current_dir, "Folderlocker", "Folderlocker.ico"),
+        os.path.join(current_dir, "Folderlocker.png"),
+        os.path.join(current_dir, "Folderlocker", "Folderlocker.png")
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return os.path.join(current_dir, "Folderlocker.ico")
 
 def trigger_intruder_alert():
     def capture():
@@ -134,6 +144,9 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
     
     icon_path = get_icon_path()
+    if os.path.exists(icon_path):
+        page.window.icon = icon_path
+        
     direct_folder = sys.argv[1] if len(sys.argv) > 1 else None
     
     selected_folder = direct_folder
@@ -141,30 +154,60 @@ def main(page: ft.Page):
     failed_attempts = 0
 
     # --- HOME VIEW ---
-    animated_icon = ft.Icon(
-        icon=ft.Icons.FOLDER_OPEN,
-        size=80,
-        color=ft.Colors.WHITE,
+    app_logo_img = ft.Image(
+        src=get_icon_path(),
+        width=95,
+        height=95,
+        border_radius=48,
+        fit="cover",
+    )
+    
+    status_icon = ft.Icon(
+        icon=ft.Icons.LOCK_OPEN_ROUNDED,
+        size=18,
+        color=ft.Colors.GREEN_400,
         scale=1.0,
-        rotate=0.0,
-        animate_scale=ft.Animation(800, ft.AnimationCurve.ELASTIC_OUT),
-        animate_rotation=ft.Animation(500, ft.AnimationCurve.DECELERATE),
+        animate_scale=ft.Animation(500, ft.AnimationCurve.ELASTIC_OUT),
+    )
+    
+    status_badge = ft.Container(
+        content=status_icon,
+        width=32,
+        height=32,
+        border_radius=16,
+        bgcolor=ft.Colors.BLUE_GREY_900,
+        border=border_all(1.5, ft.Colors.CYAN_300),
+        alignment=ft.Alignment(0, 0),
+    )
+    
+    logo_stack = ft.Stack(
+        [
+            app_logo_img,
+            ft.Container(
+                content=status_badge,
+                alignment=ft.Alignment(0.95, 0.95),
+                width=100,
+                height=100,
+            )
+        ],
+        width=100,
+        height=100,
     )
     
     logo_container = ft.Container(
-        content=animated_icon,
-        width=140,
-        height=140,
+        content=logo_stack,
+        width=130,
+        height=130,
         alignment=ft.Alignment(0, 0),
-        border_radius=70,
+        border_radius=65,
         gradient=ft.LinearGradient(
             begin=ft.Alignment(-1.0, -1.0),
             end=ft.Alignment(1.0, 1.0),
-            colors=[ft.Colors.with_opacity(0.2, ft.Colors.WHITE), ft.Colors.with_opacity(0.05, ft.Colors.WHITE)],
+            colors=[ft.Colors.with_opacity(0.2, ft.Colors.CYAN_400), ft.Colors.with_opacity(0.05, ft.Colors.WHITE)],
         ),
-        border=border_all(1, ft.Colors.with_opacity(0.2, ft.Colors.WHITE)),
-        shadow=ft.BoxShadow(spread_radius=5, blur_radius=20, color=ft.Colors.with_opacity(0.3, ft.Colors.BLACK)),
-        margin=ft.Margin(left=0, top=30, right=0, bottom=20)
+        border=border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.CYAN_300)),
+        shadow=ft.BoxShadow(spread_radius=4, blur_radius=20, color=ft.Colors.with_opacity(0.35, ft.Colors.CYAN_900)),
+        margin=ft.Margin(left=0, top=25, right=0, bottom=15)
     )
     
     title_text = ft.Text("FolderDoor", size=32, weight=ft.FontWeight.W_900, color=ft.Colors.WHITE)
@@ -219,18 +262,20 @@ def main(page: ft.Page):
     )
 
     def play_lock_animation(locked: bool):
-        animated_icon.scale = 1.4
-        animated_icon.rotate = 0.1 if locked else -0.1
+        status_icon.scale = 1.4
         page.update()
         time.sleep(0.3)
         if locked:
-            animated_icon.icon = ft.Icons.LOCK_ROUNDED
-            animated_icon.color = ft.Colors.RED_400
+            status_icon.icon = ft.Icons.LOCK_ROUNDED
+            status_icon.color = ft.Colors.RED_400
+            status_badge.border = border_all(1.5, ft.Colors.RED_400)
+            logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.RED_400))
         else:
-            animated_icon.icon = ft.Icons.FOLDER_OPEN_ROUNDED
-            animated_icon.color = ft.Colors.GREEN_400
-        animated_icon.scale = 1.0
-        animated_icon.rotate = 0.0
+            status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
+            status_icon.color = ft.Colors.GREEN_400
+            status_badge.border = border_all(1.5, ft.Colors.GREEN_400)
+            logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.CYAN_300))
+        status_icon.scale = 1.0
         page.update()
 
     def update_ui_state():
@@ -250,8 +295,10 @@ def main(page: ft.Page):
             is_locked = locker.is_locked(selected_folder)
             
             if is_locked:
-                animated_icon.icon = ft.Icons.LOCK_ROUNDED
-                animated_icon.color = ft.Colors.RED_400
+                status_icon.icon = ft.Icons.LOCK_ROUNDED
+                status_icon.color = ft.Colors.RED_400
+                status_badge.border = border_all(1.5, ft.Colors.RED_400)
+                logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.RED_400))
                 action_button.text = "UNLOCK FOLDER"
                 action_button.icon = ft.Icons.LOCK_OPEN_ROUNDED
                 action_button.style.bgcolor = ft.Colors.GREEN_600
@@ -267,8 +314,10 @@ def main(page: ft.Page):
                     pass
                 hello_button.visible = bool(hello_pwd)
             else:
-                animated_icon.icon = ft.Icons.FOLDER_OPEN_ROUNDED
-                animated_icon.color = ft.Colors.WHITE
+                status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
+                status_icon.color = ft.Colors.GREEN_400
+                status_badge.border = border_all(1.5, ft.Colors.CYAN_300)
+                logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.4, ft.Colors.CYAN_300))
                 action_button.text = "LOCK FOLDER"
                 action_button.icon = ft.Icons.LOCK_ROUNDED
                 action_button.style.bgcolor = ft.Colors.RED_600
@@ -287,8 +336,10 @@ def main(page: ft.Page):
             action_button.disabled = True
             recovery_checkbox.visible = False
             hello_button.visible = False
-            animated_icon.icon = ft.Icons.FOLDER
-            animated_icon.color = ft.Colors.WHITE54
+            status_icon.icon = ft.Icons.LOCK_OPEN_ROUNDED
+            status_icon.color = ft.Colors.WHITE54
+            status_badge.border = border_all(1.5, ft.Colors.WHITE24)
+            logo_container.border = border_all(1.5, ft.Colors.with_opacity(0.3, ft.Colors.WHITE24))
             
         page.update()
 
