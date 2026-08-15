@@ -10,6 +10,13 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+def get_icon_path():
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Folderlocker")
+    return os.path.join(base_path, "Folderlocker.ico")
+
 def _refresh_explorer():
     if os.name == 'nt':
         ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
@@ -23,12 +30,17 @@ def _get_key(password: str, salt: bytes) -> bytes:
     )
     return base64.urlsafe_b64encode(kdf.derive(password.encode()))
 
-def _create_shortcut(target_path, link_path, arguments="", icon_location=r"C:\Users\2021icts36\Desktop\Folderlocker_build\Folderlocker\Folderlocker.ico"):
+def _create_shortcut(target_path, link_path, arguments="", icon_location=None):
     shell = win32com.client.Dispatch("WScript.Shell")
     shortcut = shell.CreateShortCut(link_path)
     shortcut.TargetPath = target_path
     shortcut.Arguments = arguments
-    shortcut.IconLocation = icon_location
+    if icon_location is None:
+        icon_location = get_icon_path()
+    if os.path.exists(icon_location):
+        shortcut.IconLocation = icon_location
+    else:
+        shortcut.IconLocation = r"%SystemRoot%\System32\shell32.dll,3"
     shortcut.WorkingDirectory = os.path.dirname(target_path)
     shortcut.Save()
 
@@ -49,6 +61,10 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
     metadata_path = os.path.join(folder_path, ".locker_metadata")
     if os.path.exists(metadata_path):
         raise ValueError("Folder is already locked")
+        
+    hidden_folder_path = get_hidden_folder_path(folder_path)
+    if os.path.exists(hidden_folder_path):
+        raise ValueError("Hidden locked folder already exists. Unlock it first.")
     
     salt = os.urandom(16)
     master_key = Fernet.generate_key()
@@ -74,6 +90,7 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
             files_to_encrypt.append(os.path.join(root, file))
             
     total_files = len(files_to_encrypt)
+    encrypted_files = []
     for i, file_path in enumerate(files_to_encrypt):
         if progress_callback:
             progress_callback(i, total_files)
@@ -84,8 +101,20 @@ def lock_folder(folder_path: str, password: str, progress_callback=None):
             with open(file_path, "wb") as f:
                 f.write(encrypted_data)
             os.rename(file_path, file_path + ".locked")
+            encrypted_files.append(file_path + ".locked")
         except Exception as e:
-            print(f"Error encrypting {file_path}: {e}")
+            for locked_file in encrypted_files:
+                try:
+                    with open(locked_file, "rb") as f:
+                        data = f.read()
+                    decrypted_data = fernet_master.decrypt(data)
+                    orig_path = locked_file[:-7]
+                    with open(orig_path, "wb") as f:
+                        f.write(decrypted_data)
+                    os.remove(locked_file)
+                except Exception:
+                    pass
+            raise RuntimeError(f"Error encrypting '{os.path.basename(file_path)}'. Rolled back changes. Details: {e}")
             
     if progress_callback:
         progress_callback(total_files, total_files)
@@ -159,6 +188,16 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
     except Exception:
         raise ValueError("Verification failed!")
         
+    original_name = os.path.basename(hidden_folder_path)
+    if original_name.startswith(".") and original_name.endswith("_locked"):
+        original_name = original_name[1:-7]
+        
+    parent_dir = os.path.dirname(hidden_folder_path)
+    original_folder_path = os.path.join(parent_dir, original_name)
+    
+    if os.path.exists(original_folder_path):
+        raise ValueError(f"Cannot unlock because a folder named '{original_name}' already exists in the same directory.")
+        
     files_to_decrypt = []
     for root, dirs, files in os.walk(hidden_folder_path):
         for file in files:
@@ -168,6 +207,7 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
                 files_to_decrypt.append(os.path.join(root, file))
                 
     total_files = len(files_to_decrypt)
+    decrypted_files = []
     for i, file_path in enumerate(files_to_decrypt):
         if progress_callback:
             progress_callback(i, total_files)
@@ -179,8 +219,19 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
             with open(original_file_path, "wb") as f:
                 f.write(decrypted_data)
             os.remove(file_path)
+            decrypted_files.append((original_file_path, file_path))
         except Exception as e:
-            print(f"Error decrypting {file_path}: {e}")
+            for orig, locked in decrypted_files:
+                try:
+                    with open(orig, "rb") as f:
+                        data = f.read()
+                    re_encrypted_data = fernet_master.encrypt(data)
+                    with open(locked, "wb") as f:
+                        f.write(re_encrypted_data)
+                    os.remove(orig)
+                except Exception:
+                    pass
+            raise RuntimeError(f"Error decrypting '{os.path.basename(file_path)}'. Rolled back changes. Details: {e}")
 
     if progress_callback:
         progress_callback(total_files, total_files)
@@ -189,12 +240,6 @@ def unlock_folder(hidden_folder_path: str, password_or_recovery: str, is_recover
         os.system(f'attrib -h -s "{hidden_folder_path}"')
     os.remove(metadata_path)
     
-    original_name = os.path.basename(hidden_folder_path)
-    if original_name.startswith(".") and original_name.endswith("_locked"):
-        original_name = original_name[1:-7]
-        
-    parent_dir = os.path.dirname(hidden_folder_path)
-    original_folder_path = os.path.join(parent_dir, original_name)
     os.rename(hidden_folder_path, original_folder_path)
     
     shortcut_path = os.path.join(parent_dir, f"{original_name}.lnk")

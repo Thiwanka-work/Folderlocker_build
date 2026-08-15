@@ -2,21 +2,33 @@ import flet as ft
 import locker
 import sys
 import os
+import tkinter as tk
 from tkinter import filedialog
 import threading
+import time
+
+def get_icon_path():
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Folderlocker")
+    return os.path.join(base_path, "Folderlocker.ico")
+
+def border_all(width, color):
+    bs = ft.BorderSide(width, color)
+    return ft.Border(top=bs, right=bs, bottom=bs, left=bs)
 
 def main(page: ft.Page):
     # Window setup
     page.title = "FolderDoor"
     page.window.width = 450
-    page.window.height = 620
+    page.window.height = 680
     page.window.resizable = False
+    page.padding = 0
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 30
-    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     
     # Path to icon (Make sure it's accessible)
-    icon_path = r"C:\Users\2021icts36\Desktop\Folderlocker_build\Folderlocker\Folderlocker.ico"
+    icon_path = get_icon_path()
     
     # Check if opened via shortcut (Direct mode)
     direct_folder = sys.argv[1] if len(sys.argv) > 1 else None
@@ -27,103 +39,170 @@ def main(page: ft.Page):
     
     # --- UI Elements ---
     
-    # Animated Logo
-    logo = ft.Image(src=icon_path, width=80, height=80, fit="contain", visible=os.path.exists(icon_path))
-    
-    title_text = ft.Text("FolderDoor", size=28, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400)
-    
-    folder_text = ft.Text("No folder selected", color=ft.Colors.GREY_400, italic=True)
-    
-    password_field = ft.TextField(
-        label="Password", 
-        password=True, 
-        can_reveal_password=True,
-        width=300,
-        prefix_icon=ft.icons.LOCK,
-        border_color=ft.Colors.BLUE_500,
-        focused_border_color=ft.Colors.BLUE_300
+    animated_icon = ft.Icon(
+        icon=ft.Icons.FOLDER_OPEN,
+        size=80,
+        color=ft.Colors.WHITE,
+        scale=1.0,
+        rotate=0.0,
+        animate_scale=ft.Animation(800, ft.AnimationCurve.ELASTIC_OUT),
+        animate_rotation=ft.Animation(500, ft.AnimationCurve.DECELERATE),
     )
     
-    recovery_checkbox = ft.Checkbox(label="Use Recovery Key", visible=False, fill_color=ft.Colors.BLUE_500)
+    # Top Logo Container (glassmorphism circle)
+    logo_container = ft.Container(
+        content=animated_icon,
+        width=140,
+        height=140,
+        alignment=ft.Alignment(0, 0),
+        border_radius=70,
+        gradient=ft.LinearGradient(
+            begin=ft.Alignment(-1.0, -1.0),
+            end=ft.Alignment(1.0, 1.0),
+            colors=[ft.Colors.with_opacity(0.2, ft.Colors.WHITE), ft.Colors.with_opacity(0.05, ft.Colors.WHITE)],
+        ),
+        border=border_all(1, ft.Colors.with_opacity(0.2, ft.Colors.WHITE)),
+        shadow=ft.BoxShadow(spread_radius=5, blur_radius=20, color=ft.Colors.with_opacity(0.3, ft.Colors.BLACK)),
+        margin=ft.Margin(left=0, top=30, right=0, bottom=20)
+    )
     
-    progress_bar = ft.ProgressBar(width=300, value=0, visible=False, color=ft.Colors.AMBER_400)
+    title_text = ft.Text("FolderDoor", size=32, weight=ft.FontWeight.W_900, color=ft.Colors.WHITE)
+    subtitle_text = ft.Text("Secure your private files", size=14, color=ft.Colors.WHITE70, italic=True)
+    
+    folder_text = ft.Text("No folder selected", color=ft.Colors.WHITE70, size=14, text_align=ft.TextAlign.CENTER)
+    
+    password_field = ft.TextField(
+        label="Enter Password", 
+        password=True, 
+        can_reveal_password=True,
+        width=320,
+        prefix_icon=ft.Icons.LOCK_OUTLINE,
+        border_color=ft.Colors.with_opacity(0.5, ft.Colors.WHITE),
+        focused_border_color=ft.Colors.CYAN_300,
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
+        border_radius=12
+    )
+    
+    recovery_checkbox = ft.Checkbox(label="Use Recovery Key", visible=False, fill_color=ft.Colors.CYAN_500)
+    
+    progress_bar = ft.ProgressBar(width=320, value=0, visible=False, color=ft.Colors.CYAN_400, bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.WHITE))
     
     action_button = ft.ElevatedButton(
         "Lock / Unlock",
         disabled=True,
-        width=200,
-        height=45,
+        width=320,
+        height=55,
         style=ft.ButtonStyle(
-            shape=ft.RoundedRectangleBorder(radius=8),
-            animation_duration=300 # Smooth color transition
+            shape=ft.RoundedRectangleBorder(radius=12),
+            bgcolor=ft.Colors.CYAN_600,
+            color=ft.Colors.WHITE,
+            elevation=8,
+            shadow_color=ft.Colors.CYAN_900,
+            animation_duration=300
         )
     )
 
+    def play_lock_animation(locked: bool):
+        # Scale up and rotate slightly
+        animated_icon.scale = 1.4
+        animated_icon.rotate = 0.1 if locked else -0.1
+        page.update()
+        time.sleep(0.3)
+        # Change icon and color based on state
+        if locked:
+            animated_icon.icon = ft.Icons.LOCK_ROUNDED
+            animated_icon.color = ft.Colors.RED_400
+        else:
+            animated_icon.icon = ft.Icons.FOLDER_OPEN_ROUNDED
+            animated_icon.color = ft.Colors.GREEN_400
+        # Scale down and reset rotation
+        animated_icon.scale = 1.0
+        animated_icon.rotate = 0.0
+        page.update()
+
     def update_ui_state():
-        """Updates the UI based on whether the selected folder is locked or not."""
         nonlocal is_locked
         if selected_folder:
             folder_name = os.path.basename(selected_folder)
-            if len(folder_name) > 25: 
-                folder_name = "..." + folder_name[-25:]
-            folder_text.value = folder_name
+            if len(folder_name) > 30: 
+                folder_name = "..." + folder_name[-30:]
+            folder_text.value = f"Selected:\n{folder_name}"
             
             is_locked = locker.is_locked(selected_folder)
             
             if is_locked:
-                action_button.text = "Unlock Folder"
-                action_button.icon = ft.icons.LOCK_OPEN
-                action_button.style.bgcolor = ft.Colors.GREEN_700
-                action_button.style.color = ft.Colors.WHITE
+                animated_icon.icon = ft.Icons.LOCK_ROUNDED
+                animated_icon.color = ft.Colors.RED_400
+                action_button.text = "UNLOCK FOLDER"
+                action_button.icon = ft.Icons.LOCK_OPEN_ROUNDED
+                action_button.style.bgcolor = ft.Colors.GREEN_600
+                action_button.style.shadow_color = ft.Colors.GREEN_900
                 recovery_checkbox.visible = True
                 password_field.label = "Password or Recovery Key"
             else:
-                action_button.text = "Lock Folder"
-                action_button.icon = ft.icons.LOCK
-                action_button.style.bgcolor = ft.Colors.RED_700
-                action_button.style.color = ft.Colors.WHITE
+                animated_icon.icon = ft.Icons.FOLDER_OPEN_ROUNDED
+                animated_icon.color = ft.Colors.WHITE
+                action_button.text = "LOCK FOLDER"
+                action_button.icon = ft.Icons.LOCK_ROUNDED
+                action_button.style.bgcolor = ft.Colors.RED_600
+                action_button.style.shadow_color = ft.Colors.RED_900
                 recovery_checkbox.visible = False
                 recovery_checkbox.value = False
-                password_field.label = "Password"
+                password_field.label = "Set Password"
                 
             action_button.disabled = False
         else:
             folder_text.value = "No folder selected"
             action_button.disabled = True
             recovery_checkbox.visible = False
+            animated_icon.icon = ft.Icons.FOLDER
+            animated_icon.color = ft.Colors.WHITE54
             
         page.update()
 
     def pick_folder_result():
-        # Native file dialog is more reliable for simple desktop apps
+        root = tk.Tk()
+        root.withdraw()
         folder = filedialog.askdirectory(title="Select Folder to Lock/Unlock")
+        root.destroy()
         if folder:
             nonlocal selected_folder
             selected_folder = folder
             update_ui_state()
 
     select_btn = ft.ElevatedButton(
-        "Select Folder", 
-        icon=ft.icons.FOLDER, 
+        "Choose Folder", 
+        icon=ft.Icons.FOLDER_SPECIAL_ROUNDED, 
         on_click=lambda e: pick_folder_result(),
         visible=not direct_folder,
+        width=200,
+        height=45,
         style=ft.ButtonStyle(
-            bgcolor=ft.Colors.BLUE_GREY_800,
+            bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.WHITE),
             color=ft.Colors.WHITE,
-            shape=ft.RoundedRectangleBorder(radius=8)
+            shape=ft.RoundedRectangleBorder(radius=8),
+            elevation=0
         )
     )
     
     def show_snack(message, color=ft.Colors.RED_500):
-        page.snack_bar = ft.SnackBar(ft.Text(message, color=ft.Colors.WHITE), bgcolor=color)
+        page.snack_bar = ft.SnackBar(
+            ft.Text(message, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), 
+            bgcolor=color,
+            behavior=ft.SnackBarBehavior.FLOATING,
+            shape=ft.RoundedRectangleBorder(radius=10)
+        )
         page.snack_bar.open = True
         page.update()
 
     def show_dialog(title, content):
         dlg = ft.AlertDialog(
-            title=ft.Text(title, weight=ft.FontWeight.BOLD),
-            content=ft.Text(content, selectable=True), # Selectable so user can copy the key
-            actions=[ft.TextButton("I have saved it", on_click=lambda e: close_dlg(dlg))],
+            title=ft.Text(title, weight=ft.FontWeight.BOLD, color=ft.Colors.CYAN_300),
+            content=ft.Text(content, selectable=True, size=16),
+            shape=ft.RoundedRectangleBorder(radius=16),
+            bgcolor=ft.Colors.BLUE_GREY_900,
+            actions=[ft.TextButton("I have saved it", on_click=lambda e: close_dlg(dlg), style=ft.ButtonStyle(color=ft.Colors.CYAN_300))],
         )
         page.dialog = dlg
         dlg.open = True
@@ -166,9 +245,10 @@ def main(page: ft.Page):
                         is_recovery=recovery_checkbox.value,
                         progress_callback=progress_cb
                     )
+                    play_lock_animation(locked=False)
+                    time.sleep(0.5) # Let animation finish
                     
                     if direct_folder:
-                        # Direct mode -> Open folder and close app
                         os.startfile(unlocked_path)
                         page.window.close()
                     else:
@@ -182,11 +262,13 @@ def main(page: ft.Page):
                         pwd,
                         progress_callback=progress_cb
                     )
+                    play_lock_animation(locked=True)
+                    time.sleep(0.5) # Let animation finish
                     
                     msg = (
                         "Folder locked successfully!\n\n"
-                        "IMPORTANT: Save this Recovery Key in a safe place.\n"
-                        f"Recovery Key: {rec_key}"
+                        "IMPORTANT: Save this Recovery Key in a safe place.\n\n"
+                        f"{rec_key}"
                     )
                     show_dialog("Success!", msg)
                     password_field.value = ""
@@ -208,43 +290,61 @@ def main(page: ft.Page):
         
     action_button.on_click = perform_action
 
-    # Build Page structure
-    page.add(
-        ft.Container(height=10),
-        logo,
-        title_text,
-        ft.Container(height=20),
-        
-        ft.Card(
-            content=ft.Container(
-                content=ft.Column(
-                    [
-                        select_btn,
-                        folder_text,
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=10
-                ),
-                padding=20,
-                width=350,
-            ),
-            elevation=5,
-            color=ft.Colors.SURFACE_VARIANT
+    # Build Page structure with elegant gradient background
+    main_container = ft.Container(
+        expand=True,
+        gradient=ft.LinearGradient(
+            begin=ft.Alignment(0.0, -1.0),
+            end=ft.Alignment(0.0, 1.0),
+            colors=[ft.Colors.BLUE_GREY_900, ft.Colors.BLACK],
         ),
-        
-        ft.Container(height=10),
-        password_field,
-        recovery_checkbox,
-        ft.Container(height=10),
-        progress_bar,
-        action_button
+        padding=20,
+        content=ft.Column(
+            [
+                logo_container,
+                title_text,
+                subtitle_text,
+                ft.Container(height=15),
+                
+                # Glassmorphism folder card
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            select_btn,
+                            folder_text,
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=15
+                    ),
+                    padding=25,
+                    width=350,
+                    border_radius=16,
+                    gradient=ft.LinearGradient(
+                        colors=[ft.Colors.with_opacity(0.1, ft.Colors.WHITE), ft.Colors.with_opacity(0.02, ft.Colors.WHITE)]
+                    ),
+                    border=border_all(1, ft.Colors.with_opacity(0.1, ft.Colors.WHITE)),
+                ),
+                
+                ft.Container(height=15),
+                password_field,
+                recovery_checkbox,
+                ft.Container(height=10),
+                progress_bar,
+                action_button
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            scroll=ft.ScrollMode.AUTO
+        )
     )
+    
+    page.add(main_container)
     
     # Adjust for direct mode
     if direct_folder:
         page.window.width = 400
-        page.window.height = 550
+        page.window.height = 650
         title_text.value = "Unlock FolderDoor"
+        subtitle_text.value = "Enter your password to unlock"
         update_ui_state()
 
 if __name__ == "__main__":
